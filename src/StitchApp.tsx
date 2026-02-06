@@ -166,6 +166,18 @@ function renderView(
       return <GenerateDesign data={view.data} app={app} onCallTool={callTool} />;
     case 'design_context':
       return <DesignContext data={view.data} />;
+    case 'create_project':
+      return (
+        <div className="view-container">
+          <div className="view-header">
+            <h2>Project Created</h2>
+          </div>
+          <div className="empty-state">
+            <h3>{view.data.project.title}</h3>
+            <p>Project created successfully. You can now generate screens in it.</p>
+          </div>
+        </div>
+      );
     default:
       return <div className="empty-state">Unknown view</div>;
   }

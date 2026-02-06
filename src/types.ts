@@ -107,6 +107,11 @@ export interface GenerateDesignData {
   codeData?: CodeData;
   suggestions?: string[];
   prompt: string;
+  autoCreatedProject?: boolean;
+}
+
+export interface CreateProjectData {
+  project: StitchProject;
 }
 
 export interface ListProjectsData {
@@ -123,4 +128,5 @@ export type ToolResultData =
   | { type: 'generate_design'; data: GenerateDesignData }
   | { type: 'list_projects'; data: ListProjectsData }
   | { type: 'list_screens'; data: ListScreensData }
-  | { type: 'design_context'; data: DesignContextData };
+  | { type: 'design_context'; data: DesignContextData }
+  | { type: 'create_project'; data: CreateProjectData };

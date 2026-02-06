@@ -32,7 +32,7 @@ export const createServer = () => {
     server,
     'list-projects',
     {
-      description: 'List all Stitch design projects. Shows a visual grid of projects with names and metadata.',
+      description: 'List all Stitch design projects. Shows a visual grid of projects with names and metadata. Each project name is in format "projects/{id}" — use just the numeric ID when calling other tools.',
       inputSchema: {
         filter: z.string().optional().describe('Filter: "view=owned" (default) or "view=shared"'),
       },
@@ -67,7 +67,7 @@ export const createServer = () => {
     {
       description: 'List all screens in a Stitch project. Shows a thumbnail grid of screen designs.',
       inputSchema: {
-        projectId: z.string().describe('The Stitch project ID'),
+        projectId: z.string().describe('The Stitch project ID (numeric ID only, not "projects/..." format)'),
       },
       _meta: {
         ui: { resourceUri: RESOURCE_URI },
@@ -100,7 +100,7 @@ export const createServer = () => {
     {
       description: 'View a Stitch screen design with image preview, HTML/CSS code, and extracted design tokens (colors, fonts, spacing).',
       inputSchema: {
-        projectId: z.string().describe('The Stitch project ID'),
+        projectId: z.string().describe('The Stitch project ID (numeric ID only, not "projects/..." format)'),
         screenId: z.string().describe('The screen ID to view'),
       },
       _meta: {
@@ -138,9 +138,9 @@ export const createServer = () => {
     server,
     'generate-design',
     {
-      description: 'Generate a new screen design in a Google Stitch project using AI. Creates the design in Stitch and returns a preview with code. Use this tool when the user wants to generate, create, or design a new screen in Stitch.',
+      description: 'Generate a new screen design in a Google Stitch project using AI. Creates the design in Stitch and returns a preview with code. Use this tool when the user wants to generate, create, or design a new screen in Stitch. If no projectId is provided, a new project will be automatically created.',
       inputSchema: {
-        projectId: z.string().describe('The Stitch project ID to generate the screen in'),
+        projectId: z.string().optional().describe('The Stitch project ID (numeric ID only, not "projects/..." format). If omitted, a new project is auto-created.'),
         prompt: z.string().describe('Text description of the desired screen design'),
         deviceType: z.enum(['MOBILE', 'DESKTOP', 'TABLET']).optional().describe('Target device type (default: MOBILE)'),
         modelId: z.enum(['GEMINI_3_PRO', 'GEMINI_3_FLASH']).optional().describe('AI model to use (default: GEMINI_3_FLASH)'),
@@ -151,8 +151,18 @@ export const createServer = () => {
     },
     async (args) => {
       try {
+        // Determine or create the target project
+        let projectId = args.projectId;
+        if (!projectId) {
+          const projectTitle = args.prompt.length > 50
+            ? args.prompt.substring(0, 50).trim() + '...'
+            : args.prompt;
+          const project = await stitch.createProject(projectTitle);
+          projectId = project.name.replace(/^projects\//, '');
+        }
+
         const result = await stitch.generateScreenFromText({
-          projectId: args.projectId,
+          projectId,
           prompt: args.prompt,
           deviceType: args.deviceType,
           modelId: args.modelId,
@@ -176,8 +186,8 @@ export const createServer = () => {
           const screenId = parts[parts.length - 1] || '';
           try {
             [imageData, codeData] = await Promise.all([
-              stitch.fetchScreenImage(args.projectId, screenId),
-              stitch.fetchScreenCode(args.projectId, screenId),
+              stitch.fetchScreenImage(projectId, screenId),
+              stitch.fetchScreenCode(projectId, screenId),
             ]);
           } catch {
             // Screen may not be ready yet, image/code are optional
@@ -214,7 +224,7 @@ export const createServer = () => {
     {
       description: 'Extract design tokens (colors, fonts, spacing, layouts) from a Stitch screen. Useful for maintaining design consistency across screens.',
       inputSchema: {
-        projectId: z.string().describe('The Stitch project ID'),
+        projectId: z.string().describe('The Stitch project ID (numeric ID only, not "projects/..." format)'),
         screenId: z.string().describe('The screen ID to analyze'),
       },
       _meta: {
@@ -232,6 +242,40 @@ export const createServer = () => {
               text: JSON.stringify({
                 type: 'design_context',
                 data: designContext,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return errorResult(err);
+      }
+    }
+  );
+
+  // Tool 6: Create Project
+  registerAppTool(
+    server,
+    'create-project',
+    {
+      description: 'Create a new Stitch design project. Returns the new project with its ID. Use this when the user wants to start a new design project in Stitch.',
+      inputSchema: {
+        title: z.string().optional().describe('Project title (e.g. "Product Dashboard Designs"). Defaults to "New Stitch Project".'),
+      },
+      _meta: {
+        ui: { resourceUri: RESOURCE_URI },
+      },
+    },
+    async (args) => {
+      try {
+        const title = args.title || 'New Stitch Project';
+        const project = await stitch.createProject(title);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                type: 'create_project',
+                data: { project },
               }),
             },
           ],

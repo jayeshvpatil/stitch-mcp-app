@@ -78,6 +78,10 @@ export class StitchClient {
     return headers;
   }
 
+  private normalizeProjectId(projectId: string): string {
+    return projectId.replace(/^projects\//, '');
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers = await this.getHeaders();
     const url = `${STITCH_API_BASE}${path}`;
@@ -117,6 +121,7 @@ export class StitchClient {
   }
 
   async listScreens(projectId: string): Promise<StitchScreen[]> {
+    projectId = this.normalizeProjectId(projectId);
     const result = await this.request<{ screens?: StitchScreen[] }>(
       'GET',
       `/projects/${projectId}/screens`
@@ -125,6 +130,7 @@ export class StitchClient {
   }
 
   async getScreen(projectId: string, screenId: string): Promise<StitchScreen> {
+    projectId = this.normalizeProjectId(projectId);
     return this.request<StitchScreen>(
       'GET',
       `/projects/${projectId}/screens/${screenId}`
@@ -135,6 +141,7 @@ export class StitchClient {
     screen: StitchScreen;
     outputComponents?: Array<{ text?: string; suggestions?: string[] }>;
   }> {
+    const projectId = this.normalizeProjectId(options.projectId);
     const body: Record<string, unknown> = {
       prompt: options.prompt,
     };
@@ -147,12 +154,13 @@ export class StitchClient {
 
     return this.request(
       'POST',
-      `/projects/${options.projectId}/screens:generateFromText`,
+      `/projects/${projectId}/screens:generateFromText`,
       body
     );
   }
 
   async extractDesignContext(projectId: string, screenId: string): Promise<DesignContext> {
+    projectId = this.normalizeProjectId(projectId);
     const context: DesignContext = {
       colors: [],
       fonts: [],
@@ -212,11 +220,13 @@ export class StitchClient {
   }
 
   async fetchScreenImage(projectId: string, screenId: string): Promise<string> {
+    projectId = this.normalizeProjectId(projectId);
     const screen = await this.getScreen(projectId, screenId);
     return screen.screenshot?.downloadUrl || '';
   }
 
   async fetchScreenCode(projectId: string, screenId: string): Promise<{ html: string; css: string }> {
+    projectId = this.normalizeProjectId(projectId);
     const screen = await this.getScreen(projectId, screenId);
     let html = '';
     let css = '';
