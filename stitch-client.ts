@@ -1,6 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 
 const STITCH_API_BASE = 'https://stitch.googleapis.com/v1';
+const STITCH_MCP_URL = 'https://stitch.googleapis.com/mcp';
 
 export interface StitchProject {
   name: string;
@@ -100,6 +101,38 @@ export class StitchClient {
     return response.json() as Promise<T>;
   }
 
+  /**
+   * Call a Stitch tool via the MCP JSON-RPC endpoint.
+   * Some operations (like screen generation) are only available through
+   * the MCP endpoint, not the REST API.
+   */
+  private async mcpRequest<T>(toolName: string, args: Record<string, unknown>): Promise<T> {
+    const headers = await this.getHeaders();
+    const body = {
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: toolName, arguments: args },
+      id: Date.now(),
+    };
+
+    const response = await fetch(STITCH_MCP_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Stitch MCP error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json() as { result?: T; error?: { code?: number; message: string } };
+    if (data.error) {
+      throw new Error(`Stitch MCP error: ${data.error.message}`);
+    }
+    return data.result as T;
+  }
+
   async listProjects(filter?: string): Promise<StitchProject[]> {
     const params = new URLSearchParams();
     if (filter) {
@@ -142,21 +175,52 @@ export class StitchClient {
     outputComponents?: Array<{ text?: string; suggestions?: string[] }>;
   }> {
     const projectId = this.normalizeProjectId(options.projectId);
-    const body: Record<string, unknown> = {
+    const args: Record<string, unknown> = {
+      projectId,
       prompt: options.prompt,
     };
-    if (options.deviceType) {
-      body['deviceType'] = options.deviceType;
-    }
-    if (options.modelId) {
-      body['modelId'] = options.modelId;
+    if (options.deviceType) args['deviceType'] = options.deviceType;
+    if (options.modelId) args['modelId'] = options.modelId;
+
+    // Use MCP JSON-RPC endpoint — the REST endpoint doesn't support generation
+    const mcpResult = await this.mcpRequest<Record<string, unknown>>('generate_screen_from_text', args);
+
+    // The MCP response shape varies — extract screen data from wherever it appears
+    let screen: StitchScreen = { name: '' };
+    let outputComponents: Array<{ text?: string; suggestions?: string[] }> = [];
+
+    // Strategy 1: screen data directly on result (e.g., mcpResult.screen)
+    if (mcpResult.screen) {
+      screen = mcpResult.screen as StitchScreen;
     }
 
-    return this.request(
-      'POST',
-      `/projects/${projectId}/screens:generateFromText`,
-      body
-    );
+    // Strategy 2: screen data inside content[].text as JSON
+    const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
+    if (content) {
+      for (const item of content) {
+        if (item.type === 'text' && item.text) {
+          try {
+            const parsed = JSON.parse(item.text);
+            if (parsed.screen && !screen.name) {
+              screen = parsed.screen;
+            }
+            if (parsed.outputComponents || parsed.output_components) {
+              outputComponents = parsed.outputComponents || parsed.output_components;
+            }
+          } catch {
+            // Not JSON — plain text message, skip
+          }
+        }
+      }
+    }
+
+    // Strategy 3: output_components at top level of MCP result
+    const topOutputComponents = (mcpResult.outputComponents || mcpResult.output_components) as typeof outputComponents | undefined;
+    if (topOutputComponents && outputComponents.length === 0) {
+      outputComponents = topOutputComponents;
+    }
+
+    return { screen, outputComponents: outputComponents.length > 0 ? outputComponents : undefined };
   }
 
   async extractDesignContext(projectId: string, screenId: string): Promise<DesignContext> {
