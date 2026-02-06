@@ -98,7 +98,7 @@ export const createServer = () => {
     server,
     'design-viewer',
     {
-      description: 'View a screen design with image preview, HTML/CSS code, and extracted design tokens (colors, fonts, spacing).',
+      description: 'View a Stitch screen design with image preview, HTML/CSS code, and extracted design tokens (colors, fonts, spacing).',
       inputSchema: {
         projectId: z.string().describe('The Stitch project ID'),
         screenId: z.string().describe('The screen ID to view'),
@@ -138,7 +138,7 @@ export const createServer = () => {
     server,
     'generate-design',
     {
-      description: 'Generate a new screen design from a text prompt using AI. Shows the generated design preview with code.',
+      description: 'Generate a new screen design in a Google Stitch project using AI. Creates the design in Stitch and returns a preview with code. Use this tool when the user wants to generate, create, or design a new screen in Stitch.',
       inputSchema: {
         projectId: z.string().describe('The Stitch project ID to generate the screen in'),
         prompt: z.string().describe('Text description of the desired screen design'),
@@ -212,7 +212,7 @@ export const createServer = () => {
     server,
     'extract-design-context',
     {
-      description: 'Extract design tokens (colors, fonts, spacing, layouts) from a screen. Useful for maintaining design consistency.',
+      description: 'Extract design tokens (colors, fonts, spacing, layouts) from a Stitch screen. Useful for maintaining design consistency across screens.',
       inputSchema: {
         projectId: z.string().describe('The Stitch project ID'),
         screenId: z.string().describe('The screen ID to analyze'),

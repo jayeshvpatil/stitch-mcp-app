@@ -160,16 +160,52 @@ export class StitchClient {
       layouts: [],
     };
 
+    // Get screen data for theme fallback
+    const screen = await this.getScreen(projectId, screenId);
+
     // Download the actual code files to extract design tokens
     const { html, css } = await this.fetchScreenCode(projectId, screenId);
 
-    if (css) {
-      context.colors = this.extractColors(css);
-      context.fonts = this.extractFonts(css);
-      context.spacing = this.extractSpacing(css);
+    // Combine CSS sources: separate CSS file + inline <style> tags
+    const inlineStyles = html ? this.extractInlineStyles(html) : '';
+    const allCss = [css, inlineStyles].filter(Boolean).join('\n');
+
+    // Extract from standard CSS
+    if (allCss) {
+      context.colors = this.extractColors(allCss);
+      context.fonts = this.extractFonts(allCss);
+      context.spacing = this.extractSpacing(allCss);
     }
+
+    // Extract from Tailwind config (Stitch screens use Tailwind CSS)
     if (html) {
+      const tailwindConfig = this.extractTailwindConfig(html);
+      if (tailwindConfig) {
+        context.colors.push(...this.extractTailwindColors(tailwindConfig));
+        context.fonts.push(...this.extractTailwindFonts(tailwindConfig, html));
+      }
       context.layouts = this.extractLayouts(html);
+    }
+
+    // Fallback: use screen.theme data (always available from Stitch API)
+    if (screen.theme) {
+      const theme = screen.theme as Record<string, unknown>;
+      if (theme.customColor && typeof theme.customColor === 'string') {
+        const hasColor = context.colors.some(c => c.hex.toLowerCase() === (theme.customColor as string).toLowerCase());
+        if (!hasColor) {
+          context.colors.unshift({ name: 'primary', hex: theme.customColor as string, usage: 'Theme primary color' });
+        }
+      }
+      if (theme.font && typeof theme.font === 'string') {
+        const fontName = (theme.font as string).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const hasFont = context.fonts.some(f => f.family.toLowerCase().includes(fontName.toLowerCase()));
+        if (!hasFont) {
+          context.fonts.unshift({ family: fontName, weight: '400', size: '16px', usage: 'Theme font' });
+        }
+      }
+      if (theme.colorMode && typeof theme.colorMode === 'string') {
+        context.layouts.unshift({ type: theme.colorMode as string, description: `${theme.colorMode} color mode` });
+      }
     }
 
     return context;
@@ -196,8 +232,14 @@ export class StitchClient {
 
   private async downloadFile(url: string): Promise<string> {
     try {
-      const headers = await this.getHeaders();
-      const response = await fetch(url, { headers });
+      // usercontent.google.com URLs have auth baked into URL params —
+      // sending OAuth headers causes the request to fail
+      const needsAuth = !url.includes('usercontent.google.com');
+      const options: RequestInit = {};
+      if (needsAuth) {
+        options.headers = await this.getHeaders();
+      }
+      const response = await fetch(url, options);
       if (!response.ok) return '';
       return response.text();
     } catch {
@@ -206,6 +248,69 @@ export class StitchClient {
   }
 
   // Design token extraction helpers
+
+  private extractInlineStyles(html: string): string {
+    const parts: string[] = [];
+    const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+    let match;
+    while ((match = styleRegex.exec(html)) !== null) {
+      parts.push(match[1]!);
+    }
+    return parts.join('\n');
+  }
+
+  private extractTailwindConfig(html: string): string {
+    // Match tailwind.config = { ... } in script tags
+    const configRegex = /tailwind\.config\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/;
+    const match = configRegex.exec(html);
+    return match ? match[1]! : '';
+  }
+
+  private extractTailwindColors(config: string): DesignContext['colors'] {
+    const colors: DesignContext['colors'] = [];
+    // Match hex colors in the config with their key names
+    // Pattern: 'key': '#hex' or key: '#hex' or DEFAULT: '#hex'
+    const colorRegex = /['"]?(\w+)['"]?\s*:\s*['"]?(#[0-9a-fA-F]{3,8})['"]?/g;
+    const seen = new Set<string>();
+    let match;
+    while ((match = colorRegex.exec(config)) !== null) {
+      const name = match[1]!;
+      const hex = match[2]!;
+      if (!seen.has(hex.toLowerCase())) {
+        seen.add(hex.toLowerCase());
+        colors.push({ name, hex, usage: 'Tailwind theme' });
+      }
+    }
+    return colors;
+  }
+
+  private extractTailwindFonts(config: string, html: string): DesignContext['fonts'] {
+    const fonts: DesignContext['fonts'] = [];
+    const seen = new Set<string>();
+
+    // Extract font families from Tailwind config: fontFamily: { sans: ['Lexend', ...] }
+    const fontRegex = /fontFamily[\s\S]*?['"](\w[\w\s]*)['"](?:\s*,|\s*\])/g;
+    let match;
+    while ((match = fontRegex.exec(config)) !== null) {
+      const family = match[1]!.trim();
+      if (family && !seen.has(family.toLowerCase())) {
+        seen.add(family.toLowerCase());
+        fonts.push({ family, weight: '400', size: '16px', usage: 'Tailwind theme' });
+      }
+    }
+
+    // Extract from Google Fonts links: fonts.googleapis.com/css2?family=Lexend
+    const googleFontsRegex = /fonts\.googleapis\.com\/css2?\?family=([^&"'<>\s]+)/g;
+    while ((match = googleFontsRegex.exec(html)) !== null) {
+      const family = decodeURIComponent(match[1]!).split(':')[0]!.replace(/\+/g, ' ').trim();
+      if (family && !seen.has(family.toLowerCase())) {
+        seen.add(family.toLowerCase());
+        fonts.push({ family, weight: '400', size: '16px', usage: 'Google Fonts' });
+      }
+    }
+
+    return fonts;
+  }
 
   private extractColors(css: string): DesignContext['colors'] {
     const colors: DesignContext['colors'] = [];
@@ -288,13 +393,14 @@ export class StitchClient {
   private extractLayouts(html: string): DesignContext['layouts'] {
     const layouts: DesignContext['layouts'] = [];
 
-    if (html.includes('display: flex') || html.includes('display:flex')) {
+    // Check both CSS properties and Tailwind classes
+    if (html.includes('display: flex') || html.includes('display:flex') || /\bflex\b/.test(html)) {
       layouts.push({ type: 'Flexbox', description: 'Uses CSS Flexbox for layout' });
     }
-    if (html.includes('display: grid') || html.includes('display:grid')) {
+    if (html.includes('display: grid') || html.includes('display:grid') || /\bgrid\b/.test(html)) {
       layouts.push({ type: 'Grid', description: 'Uses CSS Grid for layout' });
     }
-    if (html.includes('position: absolute') || html.includes('position:absolute')) {
+    if (html.includes('position: absolute') || html.includes('position:absolute') || /\babsolute\b/.test(html)) {
       layouts.push({ type: 'Absolute', description: 'Uses absolute positioning' });
     }
 
