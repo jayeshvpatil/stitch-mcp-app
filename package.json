@@ -1,0 +1,64 @@
+{
+  "name": "stitch-mcp-app",
+  "version": "1.0.0",
+  "description": "MCP App for Google Stitch - Design Agent for UI generation and management",
+  "type": "module",
+  "main": "dist/main.js",
+  "bin": {
+    "stitch-mcp-app": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run build:ui && npm run build:server",
+    "build:ui": "vite build",
+    "build:server": "tsc --project tsconfig.server.json && bun build main.ts --outdir dist --target node",
+    "dev": "concurrently \"vite build --watch\" \"npm run serve\"",
+    "serve": "bun --watch main.ts",
+    "start": "npm run build && npm run serve"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.24.0",
+    "google-auth-library": "^9.0.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "bun": "*",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^0.13.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "stitch",
+    "google-stitch",
+    "design-agent",
+    "ui-design",
+    "mcp-app",
+    "ext-apps"
+  ],
+  "author": "Jayesh Patil",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jayeshvpatil/stitch-mcp-app.git"
+  },
+  "homepage": "https://github.com/jayeshvpatil/stitch-mcp-app",
+  "bugs": {
+    "url": "https://github.com/jayeshvpatil/stitch-mcp-app/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
