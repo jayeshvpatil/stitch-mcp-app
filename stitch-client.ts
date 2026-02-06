@@ -185,39 +185,59 @@ export class StitchClient {
     // Use MCP JSON-RPC endpoint — the REST endpoint doesn't support generation
     const mcpResult = await this.mcpRequest<Record<string, unknown>>('generate_screen_from_text', args);
 
-    // The MCP response shape varies — extract screen data from wherever it appears
+    // Parse the MCP response — verified shape from live API testing:
+    // mcpResult = { content: [...], structuredContent: { outputComponents: [...] } }
+    // outputComponents[] can contain:
+    //   { design: { screens: [StitchScreen, ...] } }  — generated screens
+    //   { text: "..." }                                — descriptive text
+    //   { suggestion: "..." }                          — follow-up suggestions
     let screen: StitchScreen = { name: '' };
-    let outputComponents: Array<{ text?: string; suggestions?: string[] }> = [];
+    const suggestions: string[] = [];
 
-    // Strategy 1: screen data directly on result (e.g., mcpResult.screen)
-    if (mcpResult.screen) {
-      screen = mcpResult.screen as StitchScreen;
+    // Primary: parse structuredContent (the properly typed response)
+    const structured = mcpResult.structuredContent as Record<string, unknown> | undefined;
+    if (structured?.outputComponents) {
+      const components = structured.outputComponents as Array<Record<string, unknown>>;
+      for (const comp of components) {
+        if (comp.design && !screen.name) {
+          const design = comp.design as { screens?: StitchScreen[] };
+          if (design.screens?.length) {
+            screen = design.screens[0]!;
+          }
+        }
+        if (typeof comp.suggestion === 'string') {
+          suggestions.push(comp.suggestion);
+        }
+      }
     }
 
-    // Strategy 2: screen data inside content[].text as JSON
-    const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
-    if (content) {
-      for (const item of content) {
-        if (item.type === 'text' && item.text) {
-          try {
-            const parsed = JSON.parse(item.text);
-            if (parsed.screen && !screen.name) {
-              screen = parsed.screen;
-            }
-            if (parsed.outputComponents || parsed.output_components) {
-              outputComponents = parsed.outputComponents || parsed.output_components;
-            }
-          } catch {
-            // Not JSON — plain text message, skip
+    // Fallback: parse content[].text as JSON (for different API versions)
+    if (!screen.name) {
+      const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
+      if (content) {
+        for (const item of content) {
+          if (item.type === 'text' && item.text) {
+            try {
+              const parsed = JSON.parse(item.text);
+              if (parsed.outputComponents) {
+                for (const comp of parsed.outputComponents as Array<Record<string, unknown>>) {
+                  if (comp.design && !screen.name) {
+                    const design = comp.design as { screens?: StitchScreen[] };
+                    if (design.screens?.length) screen = design.screens[0]!;
+                  }
+                  if (typeof comp.suggestion === 'string') suggestions.push(comp.suggestion);
+                }
+              }
+            } catch { /* not JSON */ }
           }
         }
       }
     }
 
-    // Strategy 3: output_components at top level of MCP result
-    const topOutputComponents = (mcpResult.outputComponents || mcpResult.output_components) as typeof outputComponents | undefined;
-    if (topOutputComponents && outputComponents.length === 0) {
-      outputComponents = topOutputComponents;
+    // Build outputComponents in the format server.ts expects
+    const outputComponents: Array<{ text?: string; suggestions?: string[] }> = [];
+    if (suggestions.length > 0) {
+      outputComponents.push({ suggestions });
     }
 
     return { screen, outputComponents: outputComponents.length > 0 ? outputComponents : undefined };
