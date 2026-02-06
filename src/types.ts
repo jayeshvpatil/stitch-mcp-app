@@ -103,6 +103,7 @@ export interface DesignViewerData {
 
 export interface GenerateDesignData {
   screen: StitchScreen;
+  allScreens?: StitchScreen[];
   imageData?: string;
   codeData?: CodeData;
   suggestions?: string[];

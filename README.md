@@ -8,7 +8,7 @@ Built with the [MCP Apps (ext-apps)](https://modelcontextprotocol.io/docs/extens
 
 > Add screenshots of the app running inside Claude.ai or Claude Desktop to the `screenshots/` directory.
 
-<!-- Uncomment these once screenshots are added:
+
 ![Projects List](screenshots/projects-list.png)
 *Browse all your Stitch design projects with thumbnail previews*
 
@@ -17,7 +17,7 @@ Built with the [MCP Apps (ext-apps)](https://modelcontextprotocol.io/docs/extens
 
 ![Design Viewer](screenshots/design-viewer.png)
 *Split panel view: screen preview with HTML/CSS code and design tokens*
--->
+
 
 ## Features
 

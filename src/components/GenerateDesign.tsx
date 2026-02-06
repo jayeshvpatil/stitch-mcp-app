@@ -1,5 +1,5 @@
 import type { App } from '@modelcontextprotocol/ext-apps';
-import type { GenerateDesignData } from '../types';
+import type { GenerateDesignData, StitchScreen } from '../types';
 
 interface GenerateDesignProps {
   data: GenerateDesignData;
@@ -7,19 +7,27 @@ interface GenerateDesignProps {
   onCallTool: (name: string, args: Record<string, unknown>) => Promise<void>;
 }
 
+function extractScreenIds(s: StitchScreen) {
+  const parts = s.name?.split('/') || [];
+  return { projectId: parts[1] || '', screenId: parts[3] || '' };
+}
+
 export default function GenerateDesign({ data, app, onCallTool }: GenerateDesignProps) {
-  const { screen, imageData, codeData, suggestions, prompt } = data;
+  const { screen, allScreens, imageData, codeData, suggestions, prompt } = data;
 
   const screenName = screen?.title || 'Generated Screen';
-
-  // Extract IDs from screen name
-  const nameParts = screen?.name?.split('/') || [];
-  const projectId = nameParts[1] || '';
-  const screenId = nameParts[3] || '';
+  const { projectId, screenId } = extractScreenIds(screen);
 
   const handleViewDetails = () => {
     if (projectId && screenId) {
       void onCallTool('design-viewer', { projectId, screenId });
+    }
+  };
+
+  const handleScreenClick = (s: StitchScreen) => {
+    const ids = extractScreenIds(s);
+    if (ids.projectId && ids.screenId) {
+      void onCallTool('design-viewer', { projectId: ids.projectId, screenId: ids.screenId });
     }
   };
 
@@ -58,26 +66,47 @@ export default function GenerateDesign({ data, app, onCallTool }: GenerateDesign
           <span className="prompt-text">{prompt}</span>
         </div>
 
-        {/* Preview */}
-        <div className="generate-preview">
-          {imageData ? (
-            <img
-              src={imageData}
-              alt={screenName}
-              className="generate-image"
-            />
-          ) : (
-            <div className="generate-placeholder">
-              <h3>{screenName}</h3>
-              <p>Screen generated successfully.</p>
-              {projectId && screenId && (
-                <button className="btn btn-primary" onClick={handleViewDetails}>
-                  View Full Design
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Preview — Multi-screen gallery or single screen */}
+        {allScreens && allScreens.length > 1 ? (
+          <div className="screen-gallery">
+            {allScreens.map((s, i) => (
+              <div key={i} className="screen-gallery-item">
+                {s.screenshot?.downloadUrl ? (
+                  <img
+                    src={s.screenshot.downloadUrl}
+                    alt={s.title || `Screen ${i + 1}`}
+                    onClick={() => handleScreenClick(s)}
+                  />
+                ) : (
+                  <div className="generate-placeholder">
+                    <p>{s.title || `Screen ${i + 1}`}</p>
+                  </div>
+                )}
+                <span className="screen-gallery-title">{s.title || `Screen ${i + 1}`}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="generate-preview">
+            {imageData ? (
+              <img
+                src={imageData}
+                alt={screenName}
+                className="generate-image"
+              />
+            ) : (
+              <div className="generate-placeholder">
+                <h3>{screenName}</h3>
+                <p>Screen generated successfully.</p>
+                {projectId && screenId && (
+                  <button className="btn btn-primary" onClick={handleViewDetails}>
+                    View Full Design
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Code preview */}
         {codeData && (codeData.html || codeData.css) && (

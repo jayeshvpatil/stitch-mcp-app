@@ -172,6 +172,7 @@ export class StitchClient {
 
   async generateScreenFromText(options: GenerateScreenOptions): Promise<{
     screen: StitchScreen;
+    allScreens: StitchScreen[];
     outputComponents?: Array<{ text?: string; suggestions?: string[] }>;
   }> {
     const projectId = this.normalizeProjectId(options.projectId);
@@ -192,6 +193,7 @@ export class StitchClient {
     //   { text: "..." }                                — descriptive text
     //   { suggestion: "..." }                          — follow-up suggestions
     let screen: StitchScreen = { name: '' };
+    const allScreens: StitchScreen[] = [];
     const suggestions: string[] = [];
 
     // Primary: parse structuredContent (the properly typed response)
@@ -199,10 +201,13 @@ export class StitchClient {
     if (structured?.outputComponents) {
       const components = structured.outputComponents as Array<Record<string, unknown>>;
       for (const comp of components) {
-        if (comp.design && !screen.name) {
+        if (comp.design) {
           const design = comp.design as { screens?: StitchScreen[] };
           if (design.screens?.length) {
-            screen = design.screens[0]!;
+            allScreens.push(...design.screens);
+            if (!screen.name) {
+              screen = design.screens[0]!;
+            }
           }
         }
         if (typeof comp.suggestion === 'string') {
@@ -221,9 +226,12 @@ export class StitchClient {
               const parsed = JSON.parse(item.text);
               if (parsed.outputComponents) {
                 for (const comp of parsed.outputComponents as Array<Record<string, unknown>>) {
-                  if (comp.design && !screen.name) {
+                  if (comp.design) {
                     const design = comp.design as { screens?: StitchScreen[] };
-                    if (design.screens?.length) screen = design.screens[0]!;
+                    if (design.screens?.length) {
+                      allScreens.push(...design.screens);
+                      if (!screen.name) screen = design.screens[0]!;
+                    }
                   }
                   if (typeof comp.suggestion === 'string') suggestions.push(comp.suggestion);
                 }
@@ -240,7 +248,7 @@ export class StitchClient {
       outputComponents.push({ suggestions });
     }
 
-    return { screen, outputComponents: outputComponents.length > 0 ? outputComponents : undefined };
+    return { screen, allScreens, outputComponents: outputComponents.length > 0 ? outputComponents : undefined };
   }
 
   async extractDesignContext(projectId: string, screenId: string): Promise<DesignContext> {
@@ -324,7 +332,7 @@ export class StitchClient {
     return { html, css };
   }
 
-  private async downloadFile(url: string): Promise<string> {
+  async downloadFile(url: string): Promise<string> {
     try {
       // usercontent.google.com URLs have auth baked into URL params —
       // sending OAuth headers causes the request to fail

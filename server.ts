@@ -178,19 +178,17 @@ export const createServer = () => {
           }
         }
 
-        // Fetch image and code for the generated screen
-        let imageData = '';
+        // Use image URL directly from MCP response (avoids redundant API calls)
+        const imageData = result.screen?.screenshot?.downloadUrl || '';
         let codeData = { html: '', css: '' };
-        if (result.screen?.name) {
-          const parts = result.screen.name.split('/');
-          const screenId = parts[parts.length - 1] || '';
+
+        // Download HTML code content if available
+        if (result.screen?.htmlCode?.downloadUrl) {
           try {
-            [imageData, codeData] = await Promise.all([
-              stitch.fetchScreenImage(projectId, screenId),
-              stitch.fetchScreenCode(projectId, screenId),
-            ]);
+            const html = await stitch.downloadFile(result.screen.htmlCode.downloadUrl);
+            codeData = { html, css: '' };
           } catch {
-            // Screen may not be ready yet, image/code are optional
+            // Code download is optional
           }
         }
 
@@ -202,6 +200,7 @@ export const createServer = () => {
                 type: 'generate_design',
                 data: {
                   screen: result.screen,
+                  allScreens: result.allScreens.length > 1 ? result.allScreens : undefined,
                   imageData,
                   codeData,
                   suggestions: suggestions.length > 0 ? suggestions : undefined,
