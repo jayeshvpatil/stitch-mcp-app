@@ -6,9 +6,6 @@ Built with the [MCP Apps (ext-apps)](https://modelcontextprotocol.io/docs/extens
 
 ## Screenshots
 
-> Add screenshots of the app running inside Claude.ai or Claude Desktop to the `screenshots/` directory.
-
-
 ![Projects List](screenshots/projects-list.png)
 *Browse all your Stitch design projects with thumbnail previews*
 
